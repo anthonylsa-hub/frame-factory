@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Frame Factory</title>
+<style>
+  :root {
+    --bg: #1a1a1a;
+    --panel: #242424;
+    --text: #ffffff;
+    --muted: #9a9a9a;
+    --accent: #00cc66;
+    --error: #ff4d4d;
+    --border: #383838;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  label.field-label { display: block; font-weight: 600; margin-bottom: 8px; }
+  input[type="password"], input[type="file"] {
+    width: 100%;
+    padding: 10px 12px;
+    background: #1c1c1c;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  input[type="file"] { padding: 8px; }
+  .filenames { color: var(--accent); font-size: 13px; margin-top: 8px; word-break: break-all; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  button.primary {
+    width: 100%;
+    padding: 16px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #00150a;
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  button.primary:disabled { background: #2f2f2f; color: #666; cursor: not-allowed; }
+  button.download {
+    display: none;
+    width: 100%;
+    padding: 16px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #00150a;
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 18px;
+    text-align: center;
+    text-decoration: none;
+  }
+  #error { color: var(--error); margin-top: 12px; white-space: pre-wrap; font-size: 14px; }
+  #progressSection { display: none; }
+  .bar-track { background: #1c1c1c; border-radius: 999px; height: 14px; overflow: hidden; border: 1px solid var(--border); }
+  .bar-fill { background: var(--accent); height: 100%; width: 0%; transition: width 0.3s; }
+  .counter { display: flex; justify-content: space-between; margin-top: 10px; font-size: 14px; }
+  .counter .muted { color: var(--muted); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 18px;
+  }
+  .cell {
+    background: #1c1c1c;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    text-align: center;
+    position: relative;
+    min-height: 96px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .cell img { width: 100%; border-radius: 4px; display: block; }
+  .cell .tc { font-size: 12px; margin-top: 6px; color: var(--muted); }
+  .cell .status { font-size: 13px; font-weight: 700; }
+  .cell .status.done { color: var(--accent); }
+  .cell .status.skipped { color: #ffcc00; }
+  .cell .status.error { color: var(--error); }
+  .cell .msg { font-size: 11px; color: var(--error); margin-top: 4px; word-break: break-word; }
+  @media (max-width: 768px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Frame <span>Factory</span></h1>
+  <p class="sub">Generate one consistently-styled 16:9 image per timecode, ready for Premiere Pro.</p>
+
+  <div class="panel">
+    <label class="field-label" for="apiKey">Paste your Gemini API key</label>
+    <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off" />
+    <p class="hint">Stored in this session only. Never saved to disk or logged.</p>
+  </div>
+
+  <div class="panel">
+    <label class="field-label" for="refImages">Upload reference character PNGs (up to 5)</label>
+    <input type="file" id="refImages" accept="image/png" multiple />
+    <div class="filenames" id="refNames"></div>
+  </div>
+
+  <div class="panel">
+    <label class="field-label" for="promptFile">Upload prompt .txt file</label>
+    <input type="file" id="promptFile" accept=".txt,text/plain" />
+    <div class="filenames" id="promptName"></div>
+  </div>
+
+  <button class="primary" id="generateBtn" disabled>Generate All Images</button>
+  <div id="error"></div>
+
+  <div id="progressSection" class="panel" style="margin-top:18px;">
+    <div class="bar-track"><div class="bar-fill" id="barFill"></div></div>
+    <div class="counter">
+      <span id="counterText">0 / 0 images generated</span>
+      <span class="muted" id="etaText"></span>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <a class="download" id="downloadBtn" href="#">Download All as ZIP</a>
+</div>
+
+<script>
+  const apiKeyEl = document.getElementById('apiKey');
+  const refImagesEl = document.getElementById('refImages');
+  const promptFileEl = document.getElementById('promptFile');
+  const refNamesEl = document.getElementById('refNames');
+  const promptNameEl = document.getElementById('promptName');
+  const generateBtn = document.getElementById('generateBtn');
+  const errorEl = document.getElementById('error');
+  const progressSection = document.getElementById('progressSection');
+  const barFill = document.getElementById('barFill');
+  const counterText = document.getElementById('counterText');
+  const etaText = document.getElementById('etaText');
+  const grid = document.getElementById('grid');
+  const downloadBtn = document.getElementById('downloadBtn');
+
+  let total = 0;
+  let finished = 0;
+  let startTime = 0;
+  const cells = {};
+
+  function refreshButton() {
+    const ok = apiKeyEl.value.trim() && refImagesEl.files.length >= 1 && promptFileEl.files.length === 1;
+    generateBtn.disabled = !ok;
+  }
+
+  apiKeyEl.addEventListener('input', refreshButton);
+
+  refImagesEl.addEventListener('change', () => {
+    const names = Array.from(refImagesEl.files).map((f) => f.name);
+    if (refImagesEl.files.length > 5) {
+      refNamesEl.textContent = 'Please select at most 5 PNGs.';
+    } else {
+      refNamesEl.textContent = names.join(', ');
+    }
+    refreshButton();
+  });
+
+  promptFileEl.addEventListener('change', () => {
+    promptNameEl.textContent = promptFileEl.files.length ? promptFileEl.files[0].name : '';
+    refreshButton();
+  });
+
+  function formatEta(seconds) {
+    if (!isFinite(seconds) || seconds <= 0) return '';
+    const m = Math.floor(seconds / 60);
+    const s = Math.round(seconds % 60);
+    return m > 0 ? `~${m}m ${s}s remaining` : `~${s}s remaining`;
+  }
+
+  function updateProgress() {
+    const pct = total ? Math.round((finished / total) * 100) : 0;
+    barFill.style.width = pct + '%';
+    counterText.textContent = `${finished} / ${total} images generated`;
+    if (finished > 0) {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const perImage = elapsed / finished;
+      etaText.textContent = formatEta(perImage * (total - finished));
+    }
+  }
+
+  function makeCell(index, timecode) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.innerHTML = `<div class="status">…</div><div class="tc">${timecode}</div>`;
+    grid.appendChild(cell);
+    cells[index] = cell;
+    return cell;
+  }
+
+  function handleImageEvent(ev) {
+    let cell = cells[ev.index] || makeCell(ev.index, ev.timecode);
+    if (ev.status === 'done') {
+      cell.innerHTML =
+        `<img src="${ev.dataUrl}" alt="${ev.timecode}" />` +
+        `<div class="tc">${ev.timecode}</div>` +
+        `<div class="status done">&#10003;</div>`;
+    } else if (ev.status === 'skipped') {
+      cell.innerHTML =
+        `<div class="status skipped">SKIPPED</div>` +
+        `<div class="tc">${ev.timecode}</div>` +
+        `<div class="msg">${ev.message || ''}</div>`;
+    } else if (ev.status === 'error') {
+      cell.innerHTML =
+        `<div class="status error">&#10007;</div>` +
+        `<div class="tc">${ev.timecode}</div>` +
+        `<div class="msg">${ev.message || 'Failed'}</div>`;
+    }
+    finished += 1;
+    updateProgress();
+  }
+
+  async function start() {
+    errorEl.textContent = '';
+    generateBtn.disabled = true;
+
+    const fd = new FormData();
+    fd.append('apiKey', apiKeyEl.value.trim());
+    Array.from(refImagesEl.files).slice(0, 5).forEach((f) => fd.append('referenceImages', f));
+    fd.append('promptFile', promptFileEl.files[0]);
+
+    let res = await fetch('/generate', { method: 'POST', body: fd });
+    let data = await res.json();
+
+    if (res.status === 409 && data.needsConfirmation) {
+      const msg = `Parsed ${data.parsed} of ${data.totalBlocks} blocks. ` +
+        `${data.failed.length} block(s) had no valid timecode and will be skipped:\n` +
+        data.failed.map((f) => '  • ' + f).join('\n') +
+        `\n\nProceed with the ${data.parsed} valid blocks?`;
+      if (!confirm(msg)) {
+        generateBtn.disabled = false;
+        refreshButton();
+        return;
+      }
+      fd.append('confirm', 'true');
+      res = await fetch('/generate', { method: 'POST', body: fd });
+      data = await res.json();
+    }
+
+    if (!res.ok) {
+      errorEl.textContent = data.error || 'Something went wrong.';
+      if (data.failed && data.failed.length) {
+        errorEl.textContent += '\nFailed blocks:\n' + data.failed.map((f) => '  • ' + f).join('\n');
+      }
+      generateBtn.disabled = false;
+      refreshButton();
+      return;
+    }
+
+    total = data.total;
+    finished = 0;
+    startTime = Date.now();
+    progressSection.style.display = 'block';
+    grid.innerHTML = '';
+    downloadBtn.style.display = 'none';
+    updateProgress();
+
+    const source = new EventSource('/progress/' + data.sessionId);
+    source.onmessage = (e) => {
+      const ev = JSON.parse(e.data);
+      if (ev.type === 'image') {
+        handleImageEvent(ev);
+      } else if (ev.type === 'complete') {
+        source.close();
+        if (ev.completed > 0) {
+          downloadBtn.href = '/download/' + data.sessionId;
+          downloadBtn.style.display = 'block';
+        }
+        counterText.textContent =
+          `Done: ${ev.completed} generated, ${ev.skipped} skipped, ${ev.errored} failed (of ${ev.total})`;
+        etaText.textContent = '';
+        generateBtn.disabled = false;
+        refreshButton();
+      } else if (ev.type === 'fatal') {
+        source.close();
+        errorEl.textContent = ev.message;
+        generateBtn.disabled = false;
+        refreshButton();
+      }
+    };
+    source.onerror = () => {
+      // Browser will auto-retry; nothing required here.
+    };
+  }
+
+  generateBtn.addEventListener('click', start);
+</script>
+</body>
+</html>
