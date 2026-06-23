@@ -219,6 +219,11 @@
           <a class="download" id="downloadBtnJpeg" href="#">Download all as JPEG (ZIP)</a>
         </div>
 
+        <div id="regenFailedWrap" style="display:none; margin-top:14px;">
+          <button class="primary" id="regenFailedBtn" style="width:auto; padding:13px 18px; background:var(--warn); color:#231c00;">Regenerate all failed</button>
+          <span id="regenFailedStatus" class="hint"></span>
+        </div>
+
         <div class="grid" id="grid"></div>
       </div>
     </div>
@@ -270,6 +275,9 @@
   const sessionSub = $('sessionSub');
   const downloadBtnPng = $('downloadBtnPng');
   const downloadBtnJpeg = $('downloadBtnJpeg');
+  const regenFailedWrap = $('regenFailedWrap');
+  const regenFailedBtn = $('regenFailedBtn');
+  const regenFailedStatus = $('regenFailedStatus');
 
   // Modal elements
   const overlay = $('overlay');
@@ -473,6 +481,7 @@
       progressSection.classList.add('hidden');
     }
     updateDownloads();
+    updateFailedButton();
     loadSessions();
   }
 
@@ -507,7 +516,40 @@
     entry.url = url || entry.url;
     entry.error = (status === 'error' || status === 'skipped') ? (message || '') : null;
     renderCell(filename);
+    updateFailedButton();
   }
+
+  function updateFailedButton() {
+    const failed = Object.values(entryByFile).filter((e) => e.status === 'error' || e.status === 'skipped').length;
+    regenFailedWrap.style.display = failed > 0 ? 'block' : 'none';
+    regenFailedBtn.textContent = `Regenerate all failed (${failed})`;
+  }
+
+  async function regenerateAllFailed() {
+    if (!apiKeyEl.value.trim()) { alert('Enter your Gemini API key at the top first.'); return; }
+    const failed = Object.values(entryByFile).filter((e) => e.status === 'error' || e.status === 'skipped');
+    if (!failed.length) return;
+
+    regenFailedBtn.disabled = true;
+    let fixed = 0, still = 0;
+    for (let i = 0; i < failed.length; i += 1) {
+      const f = failed[i];
+      regenFailedStatus.textContent = `Regenerating ${i + 1} of ${failed.length}…`;
+      try {
+        const data = await callRegen(f.filename, '');
+        if (data.status === 'done') { applyResult(f.filename, 'done', data.url, null); fixed += 1; }
+        else { applyResult(f.filename, data.status || 'error', null, data.message || data.error); still += 1; }
+      } catch (err) {
+        applyResult(f.filename, 'error', null, err.message); still += 1;
+      }
+      updateDownloads();
+      if (i < failed.length - 1) await new Promise((r) => setTimeout(r, 2000));
+    }
+    regenFailedStatus.textContent = `Done: ${fixed} fixed${still ? `, ${still} still failed` : ''}.`;
+    regenFailedBtn.disabled = false;
+    loadSessions();
+  }
+  regenFailedBtn.addEventListener('click', regenerateAllFailed);
 
   function updateDownloads() {
     const anyDone = Object.values(entryByFile).some((e) => e.status === 'done');
@@ -559,6 +601,15 @@
   $('modalClose').addEventListener('click', closeModal);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
 
+  async function callRegen(filename, adjustment) {
+    const apiKey = apiKeyEl.value.trim();
+    const res = await fetch('/api/sessions/' + currentId + '/regenerate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey, filename, adjustment: adjustment || '' }),
+    });
+    return res.json();
+  }
+
   async function doRegen(adjustment) {
     const apiKey = apiKeyEl.value.trim();
     if (!apiKey) { setModalStatus('Enter your Gemini API key at the top first.', 'err'); return; }
@@ -568,11 +619,7 @@
     setModalStatus(adjustment ? 'Applying your adjustment…' : 'Regenerating…', '');
 
     try {
-      const res = await fetch('/api/sessions/' + currentId + '/regenerate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, filename: modalFile, adjustment: adjustment || '' }),
-      });
-      const data = await res.json();
+      const data = await callRegen(modalFile, adjustment);
       if (data.status === 'done') {
         applyResult(modalFile, 'done', data.url, null);
         modalImg.src = data.url;
