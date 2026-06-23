@@ -8,10 +8,12 @@
   :root {
     --bg: #1a1a1a;
     --panel: #242424;
+    --sidebar: #161616;
     --text: #ffffff;
     --muted: #9a9a9a;
     --accent: #00cc66;
     --error: #ff4d4d;
+    --warn: #ffcc00;
     --border: #383838;
   }
   * { box-sizing: border-box; }
@@ -22,233 +24,351 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     line-height: 1.5;
   }
-  .wrap { max-width: 960px; margin: 0 auto; padding: 32px 20px 80px; }
-  h1 { font-size: 28px; margin: 0 0 4px; }
-  h1 span { color: var(--accent); }
-  .sub { color: var(--muted); margin: 0 0 28px; }
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 18px;
+  .app { display: flex; min-height: 100vh; }
+
+  /* ---- Sidebar ---- */
+  .sidebar {
+    width: 280px;
+    flex: 0 0 280px;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    padding: 18px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
   }
+  .brand { font-size: 20px; font-weight: 800; }
+  .brand span { color: var(--accent); }
+  .newBtn {
+    width: 100%; padding: 12px; font-weight: 700; font-size: 15px;
+    color: #00150a; background: var(--accent); border: none; border-radius: 8px; cursor: pointer;
+  }
+  .histTitle { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .sessionList { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; }
+  .sItem {
+    background: #1f1f1f; border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px; cursor: pointer; position: relative;
+  }
+  .sItem:hover { border-color: #555; }
+  .sItem.active { border-color: var(--accent); }
+  .sItem .sName { font-weight: 600; font-size: 14px; word-break: break-word; padding-right: 22px; }
+  .sItem .sMeta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .sItem .sMeta .bad { color: var(--error); }
+  .sItem .sDel {
+    position: absolute; top: 6px; right: 6px; color: var(--muted); background: none; border: none;
+    cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 5px; border-radius: 4px;
+  }
+  .sItem .sDel:hover { color: var(--error); background: #2a2a2a; }
+
+  /* ---- Main ---- */
+  .main { flex: 1; min-width: 0; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 28px 22px 80px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
   label.field-label { display: block; font-weight: 600; margin-bottom: 8px; }
-  input[type="password"], input[type="file"] {
-    width: 100%;
-    padding: 10px 12px;
-    background: #1c1c1c;
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 14px;
+  input[type="password"], input[type="text"], input[type="file"], textarea {
+    width: 100%; padding: 10px 12px; background: #1c1c1c; color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; font-size: 14px; font-family: inherit;
   }
   input[type="file"] { padding: 8px; }
+  textarea { resize: vertical; min-height: 70px; }
   .filenames { color: var(--accent); font-size: 13px; margin-top: 8px; word-break: break-all; }
   .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
   button.primary {
-    width: 100%;
-    padding: 16px;
-    font-size: 17px;
-    font-weight: 700;
-    color: #00150a;
-    background: var(--accent);
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: opacity 0.15s;
+    width: 100%; padding: 15px; font-size: 16px; font-weight: 700; color: #00150a;
+    background: var(--accent); border: none; border-radius: 8px; cursor: pointer;
   }
   button.primary:disabled { background: #2f2f2f; color: #666; cursor: not-allowed; }
-  button.download {
-    display: none;
-    width: 100%;
-    padding: 16px;
-    font-size: 17px;
-    font-weight: 700;
-    color: #00150a;
-    background: var(--accent);
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    margin-top: 18px;
-    text-align: center;
+  .download {
+    display: inline-block; padding: 13px 18px; font-size: 15px; font-weight: 700; color: #00150a;
+    background: var(--accent); border: none; border-radius: 8px; cursor: pointer; margin: 14px 10px 0 0;
     text-decoration: none;
   }
   #error { color: var(--error); margin-top: 12px; white-space: pre-wrap; font-size: 14px; }
-  #progressSection { display: none; }
+
   .bar-track { background: #1c1c1c; border-radius: 999px; height: 14px; overflow: hidden; border: 1px solid var(--border); }
   .bar-fill { background: var(--accent); height: 100%; width: 0%; transition: width 0.3s; }
   .counter { display: flex; justify-content: space-between; margin-top: 10px; font-size: 14px; }
   .counter .muted { color: var(--muted); }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-top: 18px;
-  }
+
+  .sessionHead { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+  .sessionHead h2 { margin: 0; font-size: 22px; word-break: break-word; }
+  .renameBtn { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; cursor: pointer; padding: 4px 8px; font-size: 12px; }
+
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
   .cell {
-    background: #1c1c1c;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px;
-    text-align: center;
-    position: relative;
-    min-height: 96px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
+    background: #1c1c1c; border: 1px solid var(--border); border-radius: 8px; padding: 8px;
+    text-align: center; position: relative; min-height: 96px; display: flex; flex-direction: column;
+    justify-content: center; cursor: pointer;
   }
+  .cell:hover { border-color: #666; }
   .cell img { width: 100%; border-radius: 4px; display: block; }
   .cell .tc { font-size: 12px; margin-top: 6px; color: var(--muted); }
   .cell .status { font-size: 13px; font-weight: 700; }
   .cell .status.done { color: var(--accent); }
-  .cell .status.skipped { color: #ffcc00; }
+  .cell .status.skipped { color: var(--warn); }
   .cell .status.error { color: var(--error); }
+  .cell .status.pending { color: var(--muted); }
   .cell .msg { font-size: 11px; color: var(--error); margin-top: 4px; word-break: break-word; }
+
+  /* ---- Modal ---- */
+  .overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    z-index: 50; align-items: center; justify-content: center; padding: 20px;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    width: 100%; max-width: 640px; max-height: 90vh; overflow-y: auto; padding: 20px;
+  }
+  .modal h3 { margin: 0 0 4px; font-size: 18px; }
+  .modal .closeX { float: right; background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; }
+  .modalImg { width: 100%; border-radius: 8px; background: #fff; margin: 10px 0; display: none; }
+  .modalNoImg { color: var(--warn); font-size: 14px; margin: 10px 0; }
+  .promptBox { background: #1c1c1c; border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 13px; color: var(--muted); white-space: pre-wrap; margin-bottom: 12px; }
+  .modalBtns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .modalBtns button {
+    flex: 1; min-width: 150px; padding: 12px; font-weight: 700; border: none; border-radius: 8px; cursor: pointer;
+  }
+  .btnRegen { background: #2f2f2f; color: var(--text); }
+  .btnAdjust { background: var(--accent); color: #00150a; }
+  .modalBtns button:disabled { opacity: .5; cursor: not-allowed; }
+  .modalStatus { font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .modalStatus.err { color: var(--error); }
+  .modalStatus.ok { color: var(--accent); }
+
+  .hidden { display: none !important; }
+  .mobileBar { display: none; }
+
   @media (max-width: 768px) {
-    .grid { grid-template-columns: 1fr; }
+    .app { flex-direction: column; }
+    .sidebar { width: 100%; flex: none; display: none; border-right: none; border-bottom: 1px solid var(--border); }
+    .sidebar.show { display: flex; }
+    .grid { grid-template-columns: 1fr 1fr; }
+    .mobileBar { display: flex; gap: 10px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .mobileBar button { background: #2f2f2f; color: var(--text); border: none; border-radius: 6px; padding: 8px 12px; cursor: pointer; }
   }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Frame <span>Factory</span></h1>
-  <p class="sub">Generate one consistently-styled 16:9 image per timecode, ready for Premiere Pro.</p>
+<div class="app">
+  <!-- Sidebar / history -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">Frame <span>Factory</span></div>
+    <button class="newBtn" id="newBtn">+ New session</button>
+    <div class="histTitle">History</div>
+    <div class="sessionList" id="sessionList"></div>
+  </aside>
 
-  <div class="panel">
-    <label class="field-label" for="apiKey">Paste your Gemini API key</label>
-    <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off" />
-    <p class="hint">Stored in this session only. Never saved to disk or logged.</p>
-  </div>
-
-  <div class="panel">
-    <label class="field-label" for="refImages">Upload reference character PNGs (up to 5)</label>
-    <input type="file" id="refImages" accept="image/png" multiple />
-    <div class="filenames" id="refNames"></div>
-  </div>
-
-  <div class="panel">
-    <label class="field-label" for="promptFile">Upload prompt .txt file</label>
-    <input type="file" id="promptFile" accept=".txt,text/plain" />
-    <div class="filenames" id="promptName"></div>
-  </div>
-
-  <button class="primary" id="generateBtn" disabled>Generate All Images</button>
-  <div id="error"></div>
-
-  <div id="progressSection" class="panel" style="margin-top:18px;">
-    <div class="bar-track"><div class="bar-fill" id="barFill"></div></div>
-    <div class="counter">
-      <span id="counterText">0 / 0 images generated</span>
-      <span class="muted" id="etaText"></span>
+  <div class="main">
+    <div class="mobileBar">
+      <button id="toggleSidebar">&#9776; Sessions</button>
+      <strong>Frame Factory</strong>
     </div>
-    <div class="grid" id="grid"></div>
-  </div>
+    <div class="wrap">
+      <!-- API key: always visible, used for generating and adjusting -->
+      <div class="panel">
+        <label class="field-label" for="apiKey">Gemini API key</label>
+        <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off" />
+        <p class="hint">Stored in your browser for this visit only. Never saved on the server.</p>
+      </div>
 
-  <a class="download" id="downloadBtn" href="#">Download All as ZIP</a>
+      <!-- NEW SESSION VIEW -->
+      <div id="newView">
+        <h1>New <span>session</span></h1>
+        <p class="sub">Upload your characters and timecoded script, then generate every frame.</p>
+
+        <div class="panel">
+          <label class="field-label" for="sessionName">Session name</label>
+          <input type="text" id="sessionName" placeholder="e.g. Episode 28 - Kong vs Godzilla" />
+        </div>
+        <div class="panel">
+          <label class="field-label" for="refImages">Reference character PNGs (up to 5)</label>
+          <input type="file" id="refImages" accept="image/png" multiple />
+          <div class="filenames" id="refNames"></div>
+        </div>
+        <div class="panel">
+          <label class="field-label" for="promptFile">Prompt .txt file</label>
+          <input type="file" id="promptFile" accept=".txt,text/plain" />
+          <div class="filenames" id="promptName"></div>
+        </div>
+        <button class="primary" id="generateBtn" disabled>Generate All Images</button>
+        <div id="error"></div>
+      </div>
+
+      <!-- SESSION VIEW (existing or in-progress) -->
+      <div id="sessionView" class="hidden">
+        <div class="sessionHead">
+          <h2 id="sessionTitle"></h2>
+          <button class="renameBtn" id="renameBtn">Rename</button>
+        </div>
+        <p class="sub" id="sessionSub"></p>
+
+        <div class="panel" id="progressSection">
+          <div class="bar-track"><div class="bar-fill" id="barFill"></div></div>
+          <div class="counter">
+            <span id="counterText">0 / 0 images generated</span>
+            <span class="muted" id="etaText"></span>
+          </div>
+        </div>
+
+        <div>
+          <a class="download" id="downloadBtnPng" href="#">Download all as PNG (ZIP)</a>
+          <a class="download" id="downloadBtnJpeg" href="#">Download all as JPEG (ZIP)</a>
+        </div>
+
+        <div class="grid" id="grid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Image modal -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <button class="closeX" id="modalClose">&times;</button>
+    <h3 id="modalTc">00:00:00</h3>
+    <img class="modalImg" id="modalImg" alt="frame" />
+    <div class="modalNoImg hidden" id="modalNoImg">No image yet for this frame.</div>
+    <div class="promptBox" id="modalPrompt"></div>
+
+    <label class="field-label" for="adjustText">Describe an adjustment (optional)</label>
+    <textarea id="adjustText" placeholder="e.g. make the character point to the left instead, add a small sun in the top corner"></textarea>
+
+    <div class="modalBtns">
+      <button class="btnRegen" id="btnRegen">Regenerate (same prompt)</button>
+      <button class="btnAdjust" id="btnAdjust">Apply adjustment</button>
+    </div>
+    <div class="modalStatus" id="modalStatus"></div>
+  </div>
 </div>
 
 <script>
-  const apiKeyEl = document.getElementById('apiKey');
-  const refImagesEl = document.getElementById('refImages');
-  const promptFileEl = document.getElementById('promptFile');
-  const refNamesEl = document.getElementById('refNames');
-  const promptNameEl = document.getElementById('promptName');
-  const generateBtn = document.getElementById('generateBtn');
-  const errorEl = document.getElementById('error');
-  const progressSection = document.getElementById('progressSection');
-  const barFill = document.getElementById('barFill');
-  const counterText = document.getElementById('counterText');
-  const etaText = document.getElementById('etaText');
-  const grid = document.getElementById('grid');
-  const downloadBtn = document.getElementById('downloadBtn');
+  const $ = (id) => document.getElementById(id);
 
-  let total = 0;
-  let finished = 0;
-  let startTime = 0;
-  const cells = {};
+  // Elements
+  const apiKeyEl = $('apiKey');
+  const sidebar = $('sidebar');
+  const sessionListEl = $('sessionList');
+  const newView = $('newView');
+  const sessionView = $('sessionView');
+  const refImagesEl = $('refImages');
+  const promptFileEl = $('promptFile');
+  const refNamesEl = $('refNames');
+  const promptNameEl = $('promptName');
+  const sessionNameEl = $('sessionName');
+  const generateBtn = $('generateBtn');
+  const errorEl = $('error');
+  const grid = $('grid');
+  const progressSection = $('progressSection');
+  const barFill = $('barFill');
+  const counterText = $('counterText');
+  const etaText = $('etaText');
+  const sessionTitle = $('sessionTitle');
+  const sessionSub = $('sessionSub');
+  const downloadBtnPng = $('downloadBtnPng');
+  const downloadBtnJpeg = $('downloadBtnJpeg');
+
+  // Modal elements
+  const overlay = $('overlay');
+  const modalImg = $('modalImg');
+  const modalNoImg = $('modalNoImg');
+  const modalTc = $('modalTc');
+  const modalPrompt = $('modalPrompt');
+  const adjustText = $('adjustText');
+  const btnRegen = $('btnRegen');
+  const btnAdjust = $('btnAdjust');
+  const modalStatus = $('modalStatus');
+
+  let currentId = null;        // session being viewed
+  let cellEls = {};            // filename -> cell element
+  let entryByFile = {};        // filename -> entry data
+  let modalFile = null;        // filename open in modal
+  let total = 0, finished = 0, startTime = 0;
+
+  // Remember API key locally so adjustments/regeneration are easy.
+  apiKeyEl.value = localStorage.getItem('ff_key') || '';
+  apiKeyEl.addEventListener('input', () => {
+    localStorage.setItem('ff_key', apiKeyEl.value.trim());
+    refreshButton();
+  });
+
+  // ---------- Sidebar ----------
+  async function loadSessions() {
+    const list = await fetch('/api/sessions').then((r) => r.json()).catch(() => []);
+    sessionListEl.innerHTML = '';
+    if (!list.length) {
+      sessionListEl.innerHTML = '<div class="hint">No sessions yet.</div>';
+      return;
+    }
+    for (const s of list) {
+      const item = document.createElement('div');
+      item.className = 'sItem' + (s.id === currentId ? ' active' : '');
+      const failTxt = s.failed > 0 ? ` &middot; <span class="bad">${s.failed} need attention</span>` : '';
+      item.innerHTML =
+        `<div class="sName">${escapeHtml(s.name)}</div>` +
+        `<div class="sMeta">${s.done}/${s.total} done${failTxt}</div>` +
+        `<button class="sDel" title="Delete">&times;</button>`;
+      item.addEventListener('click', (e) => {
+        if (e.target.classList.contains('sDel')) return;
+        openSession(s.id);
+      });
+      item.querySelector('.sDel').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this session and all its images? This cannot be undone.')) return;
+        await fetch('/api/sessions/' + s.id, { method: 'DELETE' });
+        if (currentId === s.id) showNewView();
+        loadSessions();
+      });
+      sessionListEl.appendChild(item);
+    }
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  // ---------- New session view ----------
+  function showNewView() {
+    currentId = null;
+    newView.classList.remove('hidden');
+    sessionView.classList.add('hidden');
+    errorEl.textContent = '';
+    loadSessions();
+  }
+
+  $('newBtn').addEventListener('click', showNewView);
+  $('toggleSidebar').addEventListener('click', () => sidebar.classList.toggle('show'));
 
   function refreshButton() {
     const ok = apiKeyEl.value.trim() && refImagesEl.files.length >= 1 && promptFileEl.files.length === 1;
     generateBtn.disabled = !ok;
   }
 
-  apiKeyEl.addEventListener('input', refreshButton);
-
   refImagesEl.addEventListener('change', () => {
     const names = Array.from(refImagesEl.files).map((f) => f.name);
-    if (refImagesEl.files.length > 5) {
-      refNamesEl.textContent = 'Please select at most 5 PNGs.';
-    } else {
-      refNamesEl.textContent = names.join(', ');
-    }
+    refNamesEl.textContent = refImagesEl.files.length > 5 ? 'Please select at most 5 PNGs.' : names.join(', ');
     refreshButton();
   });
-
   promptFileEl.addEventListener('change', () => {
     promptNameEl.textContent = promptFileEl.files.length ? promptFileEl.files[0].name : '';
     refreshButton();
   });
 
-  function formatEta(seconds) {
-    if (!isFinite(seconds) || seconds <= 0) return '';
-    const m = Math.floor(seconds / 60);
-    const s = Math.round(seconds % 60);
-    return m > 0 ? `~${m}m ${s}s remaining` : `~${s}s remaining`;
-  }
-
-  function updateProgress() {
-    const pct = total ? Math.round((finished / total) * 100) : 0;
-    barFill.style.width = pct + '%';
-    counterText.textContent = `${finished} / ${total} images generated`;
-    if (finished > 0) {
-      const elapsed = (Date.now() - startTime) / 1000;
-      const perImage = elapsed / finished;
-      etaText.textContent = formatEta(perImage * (total - finished));
-    }
-  }
-
-  function makeCell(index, timecode) {
-    const cell = document.createElement('div');
-    cell.className = 'cell';
-    cell.innerHTML = `<div class="status">…</div><div class="tc">${timecode}</div>`;
-    grid.appendChild(cell);
-    cells[index] = cell;
-    return cell;
-  }
-
-  function handleImageEvent(ev) {
-    let cell = cells[ev.index] || makeCell(ev.index, ev.timecode);
-    if (ev.status === 'done') {
-      cell.innerHTML =
-        `<img src="${ev.dataUrl}" alt="${ev.timecode}" />` +
-        `<div class="tc">${ev.timecode}</div>` +
-        `<div class="status done">&#10003;</div>`;
-    } else if (ev.status === 'skipped') {
-      cell.innerHTML =
-        `<div class="status skipped">SKIPPED</div>` +
-        `<div class="tc">${ev.timecode}</div>` +
-        `<div class="msg">${ev.message || ''}</div>`;
-    } else if (ev.status === 'error') {
-      cell.innerHTML =
-        `<div class="status error">&#10007;</div>` +
-        `<div class="tc">${ev.timecode}</div>` +
-        `<div class="msg">${ev.message || 'Failed'}</div>`;
-    }
-    finished += 1;
-    updateProgress();
-  }
-
-  async function start() {
+  // ---------- Generation ----------
+  async function startGeneration() {
     errorEl.textContent = '';
     generateBtn.disabled = true;
 
     const fd = new FormData();
     fd.append('apiKey', apiKeyEl.value.trim());
+    fd.append('name', sessionNameEl.value.trim());
     Array.from(refImagesEl.files).slice(0, 5).forEach((f) => fd.append('referenceImages', f));
     fd.append('promptFile', promptFileEl.files[0]);
 
-    let res = await fetch('/generate', { method: 'POST', body: fd });
+    let res = await fetch('/api/sessions', { method: 'POST', body: fd });
     let data = await res.json();
 
     if (res.status === 409 && data.needsConfirmation) {
@@ -256,13 +376,9 @@
         `${data.failed.length} block(s) had no valid timecode and will be skipped:\n` +
         data.failed.map((f) => '  • ' + f).join('\n') +
         `\n\nProceed with the ${data.parsed} valid blocks?`;
-      if (!confirm(msg)) {
-        generateBtn.disabled = false;
-        refreshButton();
-        return;
-      }
+      if (!confirm(msg)) { generateBtn.disabled = false; refreshButton(); return; }
       fd.append('confirm', 'true');
-      res = await fetch('/generate', { method: 'POST', body: fd });
+      res = await fetch('/api/sessions', { method: 'POST', body: fd });
       data = await res.json();
     }
 
@@ -271,48 +387,227 @@
       if (data.failed && data.failed.length) {
         errorEl.textContent += '\nFailed blocks:\n' + data.failed.map((f) => '  • ' + f).join('\n');
       }
-      generateBtn.disabled = false;
-      refreshButton();
+      generateBtn.disabled = false; refreshButton();
       return;
     }
 
-    total = data.total;
-    finished = 0;
+    // Switch to the session view and stream progress.
+    await openSession(data.sessionId, true);
+    attachProgress(data.sessionId);
+  }
+  generateBtn.addEventListener('click', startGeneration);
+
+  function attachProgress(id) {
+    total = Object.keys(entryByFile).length;
+    finished = Object.values(entryByFile).filter((e) => e.status !== 'pending').length;
     startTime = Date.now();
-    progressSection.style.display = 'block';
-    grid.innerHTML = '';
-    downloadBtn.style.display = 'none';
+    progressSection.classList.remove('hidden');
     updateProgress();
 
-    const source = new EventSource('/progress/' + data.sessionId);
+    const source = new EventSource('/progress/' + id);
     source.onmessage = (e) => {
       const ev = JSON.parse(e.data);
       if (ev.type === 'image') {
-        handleImageEvent(ev);
+        applyResult(ev.filename, ev.status, ev.url, ev.message);
+        finished += 1;
+        updateProgress();
       } else if (ev.type === 'complete') {
         source.close();
-        if (ev.completed > 0) {
-          downloadBtn.href = '/download/' + data.sessionId;
-          downloadBtn.style.display = 'block';
-        }
         counterText.textContent =
           `Done: ${ev.completed} generated, ${ev.skipped} skipped, ${ev.errored} failed (of ${ev.total})`;
         etaText.textContent = '';
-        generateBtn.disabled = false;
-        refreshButton();
+        loadSessions();
+        updateDownloads();
       } else if (ev.type === 'fatal') {
         source.close();
-        errorEl.textContent = ev.message;
-        generateBtn.disabled = false;
-        refreshButton();
+        alert(ev.message);
       }
     };
-    source.onerror = () => {
-      // Browser will auto-retry; nothing required here.
-    };
+    source.onerror = () => {};
   }
 
-  generateBtn.addEventListener('click', start);
+  function formatEta(seconds) {
+    if (!isFinite(seconds) || seconds <= 0) return '';
+    const m = Math.floor(seconds / 60), s = Math.round(seconds % 60);
+    return m > 0 ? `~${m}m ${s}s remaining` : `~${s}s remaining`;
+  }
+  function updateProgress() {
+    const pct = total ? Math.round((finished / total) * 100) : 0;
+    barFill.style.width = pct + '%';
+    counterText.textContent = `${finished} / ${total} images generated`;
+    if (finished > 0 && finished < total) {
+      const elapsed = (Date.now() - startTime) / 1000;
+      etaText.textContent = formatEta((elapsed / finished) * (total - finished));
+    }
+  }
+
+  // ---------- Session view ----------
+  async function openSession(id, isNew) {
+    const detail = await fetch('/api/sessions/' + id).then((r) => r.json());
+    if (detail.error) { alert(detail.error); return; }
+    currentId = id;
+    newView.classList.add('hidden');
+    sessionView.classList.remove('hidden');
+    sidebar.classList.remove('show');
+
+    sessionTitle.textContent = detail.name;
+    sessionSub.textContent = new Date(detail.createdAt).toLocaleString();
+
+    cellEls = {};
+    entryByFile = {};
+    grid.innerHTML = '';
+    for (const entry of detail.entries) {
+      entryByFile[entry.filename] = entry;
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.addEventListener('click', () => openModal(entry.filename));
+      grid.appendChild(cell);
+      cellEls[entry.filename] = cell;
+      renderCell(entry.filename);
+    }
+
+    const anyPending = detail.entries.some((e) => e.status === 'pending');
+    if (isNew || (anyPending && detail.status === 'running')) {
+      progressSection.classList.remove('hidden');
+    } else {
+      progressSection.classList.add('hidden');
+    }
+    updateDownloads();
+    loadSessions();
+  }
+
+  function renderCell(filename) {
+    const entry = entryByFile[filename];
+    const cell = cellEls[filename];
+    if (!cell) return;
+    if (entry.status === 'done') {
+      cell.innerHTML =
+        `<img src="${entry.url}" alt="${entry.timecode}" />` +
+        `<div class="tc">${entry.timecode}</div>` +
+        `<div class="status done">&#10003;</div>`;
+    } else if (entry.status === 'skipped') {
+      cell.innerHTML =
+        `<div class="status skipped">SKIPPED</div>` +
+        `<div class="tc">${entry.timecode}</div>` +
+        `<div class="msg">${escapeHtml(entry.error || '')}</div>`;
+    } else if (entry.status === 'error') {
+      cell.innerHTML =
+        `<div class="status error">&#10007; FAILED</div>` +
+        `<div class="tc">${entry.timecode}</div>` +
+        `<div class="msg">${escapeHtml(entry.error || 'Failed')}</div>`;
+    } else {
+      cell.innerHTML = `<div class="status pending">&hellip;</div><div class="tc">${entry.timecode}</div>`;
+    }
+  }
+
+  function applyResult(filename, status, url, message) {
+    const entry = entryByFile[filename];
+    if (!entry) return;
+    entry.status = status;
+    entry.url = url || entry.url;
+    entry.error = (status === 'error' || status === 'skipped') ? (message || '') : null;
+    renderCell(filename);
+  }
+
+  function updateDownloads() {
+    const anyDone = Object.values(entryByFile).some((e) => e.status === 'done');
+    const disp = anyDone ? 'inline-block' : 'none';
+    downloadBtnPng.style.display = disp;
+    downloadBtnJpeg.style.display = disp;
+    if (currentId) {
+      downloadBtnPng.href = '/download/' + currentId + '?format=png';
+      downloadBtnJpeg.href = '/download/' + currentId + '?format=jpeg';
+    }
+  }
+
+  // ---------- Rename ----------
+  $('renameBtn').addEventListener('click', async () => {
+    if (!currentId) return;
+    const name = prompt('Rename session:', sessionTitle.textContent);
+    if (!name || !name.trim()) return;
+    const res = await fetch('/api/sessions/' + currentId, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    const data = await res.json();
+    if (data.ok) { sessionTitle.textContent = data.name; loadSessions(); }
+  });
+
+  // ---------- Image modal ----------
+  function openModal(filename) {
+    modalFile = filename;
+    const entry = entryByFile[filename];
+    modalTc.textContent = entry.timecode;
+    modalPrompt.textContent = entry.prompt;
+    modalStatus.textContent = '';
+    modalStatus.className = 'modalStatus';
+    adjustText.value = '';
+    if (entry.status === 'done' && entry.url) {
+      modalImg.src = entry.url;
+      modalImg.style.display = 'block';
+      modalNoImg.classList.add('hidden');
+    } else {
+      modalImg.style.display = 'none';
+      modalNoImg.classList.remove('hidden');
+      modalNoImg.textContent = entry.status === 'pending'
+        ? 'This frame is still being generated.'
+        : 'No image yet for this frame — regenerate to create one.';
+    }
+    overlay.classList.add('open');
+  }
+  function closeModal() { overlay.classList.remove('open'); modalFile = null; }
+  $('modalClose').addEventListener('click', closeModal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+
+  async function doRegen(adjustment) {
+    const apiKey = apiKeyEl.value.trim();
+    if (!apiKey) { setModalStatus('Enter your Gemini API key at the top first.', 'err'); return; }
+    if (!modalFile || !currentId) return;
+
+    btnRegen.disabled = true; btnAdjust.disabled = true;
+    setModalStatus(adjustment ? 'Applying your adjustment…' : 'Regenerating…', '');
+
+    try {
+      const res = await fetch('/api/sessions/' + currentId + '/regenerate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey, filename: modalFile, adjustment: adjustment || '' }),
+      });
+      const data = await res.json();
+      if (data.status === 'done') {
+        applyResult(modalFile, 'done', data.url, null);
+        modalImg.src = data.url;
+        modalImg.style.display = 'block';
+        modalNoImg.classList.add('hidden');
+        setModalStatus('Updated.', 'ok');
+        updateDownloads();
+        loadSessions();
+      } else if (data.status === 'skipped') {
+        applyResult(modalFile, 'skipped', null, data.message);
+        setModalStatus('Skipped: ' + (data.message || 'no image returned'), 'err');
+      } else {
+        setModalStatus('Failed: ' + (data.message || data.error || 'unknown error'), 'err');
+      }
+    } catch (err) {
+      setModalStatus('Error: ' + err.message, 'err');
+    } finally {
+      btnRegen.disabled = false; btnAdjust.disabled = false;
+    }
+  }
+  function setModalStatus(text, kind) {
+    modalStatus.textContent = text;
+    modalStatus.className = 'modalStatus' + (kind ? ' ' + kind : '');
+  }
+
+  btnRegen.addEventListener('click', () => doRegen(''));
+  btnAdjust.addEventListener('click', () => {
+    const adj = adjustText.value.trim();
+    if (!adj) { setModalStatus('Type an adjustment first, or use "Regenerate".', 'err'); return; }
+    doRegen(adj);
+  });
+
+  // ---------- Init ----------
+  loadSessions();
+  refreshButton();
 </script>
 </body>
 </html>
