@@ -16,10 +16,18 @@ const PORT = process.env.PORT || 3000;
 
 const MODEL = 'gemini-3.1-flash-image-preview';
 
-// Where saved sessions live. On Railway, mount a Volume at /app/data so this
-// survives redeploys (see README).
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+// Where saved sessions live. On Railway, sessions MUST be written inside the
+// attached Volume or they are wiped on every redeploy. Railway injects
+// RAILWAY_VOLUME_MOUNT_PATH (the Volume's mount path, e.g. /app/data), so we
+// write into it directly rather than guessing the path. Locally we fall back to
+// a ./data folder in the project.
+const DATA_DIR =
+  process.env.DATA_DIR ||
+  (process.env.RAILWAY_VOLUME_MOUNT_PATH
+    ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'sessions')
+    : path.join(__dirname, 'data'));
 fs.mkdirSync(DATA_DIR, { recursive: true });
+console.log('Frame Factory storing sessions in:', DATA_DIR);
 
 const STYLE_ANCHOR =
   'Lo-fi 2D doodle illustration. Plain white background only. Thick black hand-drawn outlines. ' +
