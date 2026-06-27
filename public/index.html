@@ -76,6 +76,9 @@
   textarea { resize: vertical; min-height: 70px; }
   .filenames { color: var(--accent); font-size: 13px; margin-top: 8px; word-break: break-all; }
   .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .modeOpt { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 10px; cursor: pointer; font-weight: 400; }
+  .modeOpt:last-child { margin-bottom: 0; }
+  .modeOpt input { margin-top: 4px; flex: 0 0 auto; }
   button.primary {
     width: 100%; padding: 15px; font-size: 16px; font-weight: 700; color: #00150a;
     background: var(--accent); border: none; border-radius: 8px; cursor: pointer;
@@ -194,6 +197,17 @@
           <input type="file" id="promptFile" accept=".txt,text/plain" />
           <div class="filenames" id="promptName"></div>
         </div>
+        <div class="panel">
+          <label class="field-label">Generation mode</label>
+          <label class="modeOpt">
+            <input type="radio" name="mode" value="live" checked />
+            <span><strong>Live</strong> — watch each frame appear now. Full price (~$0.039 each). Best for small jobs and quick tweaks.</span>
+          </label>
+          <label class="modeOpt">
+            <input type="radio" name="mode" value="batch" />
+            <span><strong>Batch</strong> — about 50% cheaper. Runs in the background (usually under an hour, guaranteed within 24h). No live preview while it runs — come back and reopen the session to collect your images.</span>
+          </label>
+        </div>
         <button class="primary" id="generateBtn" disabled>Generate All Images</button>
         <div id="error"></div>
       </div>
@@ -212,6 +226,17 @@
             <span id="counterText">0 / 0 images generated</span>
             <span class="muted" id="etaText"></span>
           </div>
+        </div>
+
+        <div class="panel hidden" id="batchSection">
+          <div style="font-weight:700; margin-bottom:8px;" id="batchState">Submitting batch&hellip;</div>
+          <div class="bar-track"><div class="bar-fill" id="batchBar" style="width:10%"></div></div>
+          <div class="counter">
+            <span id="batchElapsed"></span>
+            <span class="muted" id="batchEst">Usually under 1 hour &middot; guaranteed within 24h</span>
+          </div>
+          <p class="hint" id="batchHint">You can close this page and come back later — generation keeps running on Google&rsquo;s side. Reopen this session anytime to check progress.</p>
+          <button class="renameBtn" id="batchRefresh" style="margin-top:8px;">Check now</button>
         </div>
 
         <div>
@@ -279,6 +304,15 @@
   const regenFailedBtn = $('regenFailedBtn');
   const regenFailedStatus = $('regenFailedStatus');
 
+  // Batch elements
+  const batchSection = $('batchSection');
+  const batchStateEl = $('batchState');
+  const batchBar = $('batchBar');
+  const batchElapsed = $('batchElapsed');
+  const batchEst = $('batchEst');
+  const batchHint = $('batchHint');
+  const batchRefresh = $('batchRefresh');
+
   // Modal elements
   const overlay = $('overlay');
   const modalImg = $('modalImg');
@@ -340,6 +374,7 @@
 
   // ---------- New session view ----------
   function showNewView() {
+    stopBatchPolling();
     currentId = null;
     newView.classList.remove('hidden');
     sessionView.classList.add('hidden');
@@ -375,6 +410,8 @@
     fd.append('name', sessionNameEl.value.trim());
     Array.from(refImagesEl.files).slice(0, 5).forEach((f) => fd.append('referenceImages', f));
     fd.append('promptFile', promptFileEl.files[0]);
+    const mode = (document.querySelector('input[name="mode"]:checked') || {}).value || 'live';
+    fd.append('mode', mode);
 
     let res = await fetch('/api/sessions', { method: 'POST', body: fd });
     let data = await res.json();
@@ -399,9 +436,13 @@
       return;
     }
 
-    // Switch to the session view and stream progress.
+    // Switch to the session view. Batch sessions show a batch status bar and
+    // poll; live sessions stream progress over SSE. openSession starts the
+    // batch poller itself when the session is a batch.
     await openSession(data.sessionId, true);
-    attachProgress(data.sessionId);
+    if (data.mode !== 'batch') {
+      attachProgress(data.sessionId);
+    }
   }
   generateBtn.addEventListener('click', startGeneration);
 
@@ -453,6 +494,7 @@
   async function openSession(id, isNew) {
     const detail = await fetch('/api/sessions/' + id).then((r) => r.json());
     if (detail.error) { alert(detail.error); return; }
+    stopBatchPolling();
     currentId = id;
     newView.classList.add('hidden');
     sessionView.classList.remove('hidden');
@@ -474,11 +516,24 @@
       renderCell(entry.filename);
     }
 
-    const anyPending = detail.entries.some((e) => e.status === 'pending');
-    if (isNew || (anyPending && detail.status === 'running')) {
-      progressSection.classList.remove('hidden');
-    } else {
+    batchSection.classList.add('hidden');
+    if (detail.mode === 'batch' && detail.status !== 'complete') {
+      // Batch in progress (or failed): show the batch status bar.
       progressSection.classList.add('hidden');
+      batchSubmittedAt = (detail.batch && detail.batch.submittedAt) || Date.now();
+      renderBatchUI(
+        (detail.batch && detail.batch.state) || 'SUBMITTING',
+        batchSubmittedAt,
+        (detail.batch && detail.batch.error) || null,
+      );
+      if (detail.status !== 'error') startBatchPolling(id);
+    } else {
+      const anyPending = detail.entries.some((e) => e.status === 'pending');
+      if (isNew || (anyPending && detail.status === 'running')) {
+        progressSection.classList.remove('hidden');
+      } else {
+        progressSection.classList.add('hidden');
+      }
     }
     updateDownloads();
     updateFailedButton();
@@ -561,6 +616,93 @@
       downloadBtnJpeg.href = '/download/' + currentId + '?format=jpeg';
     }
   }
+
+  // ---------- Batch polling ----------
+  let batchPollTimer = null;
+  let batchClockTimer = null;
+  let batchSubmittedAt = 0;
+
+  function stopBatchPolling() {
+    if (batchPollTimer) { clearInterval(batchPollTimer); batchPollTimer = null; }
+    if (batchClockTimer) { clearInterval(batchClockTimer); batchClockTimer = null; }
+  }
+
+  function startBatchPolling(id) {
+    stopBatchPolling();
+    batchClockTimer = setInterval(updateBatchElapsed, 1000);
+    updateBatchElapsed();
+    pollBatchStatus(id);
+    batchPollTimer = setInterval(() => pollBatchStatus(id), 20000);
+  }
+
+  async function pollBatchStatus(id) {
+    let data;
+    try {
+      data = await fetch('/api/sessions/' + id + '/batch-status', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: apiKeyEl.value.trim() }),
+      }).then((r) => r.json());
+    } catch { return; }
+    if (!data || data.mode !== 'batch' || currentId !== id) return;
+    if (data.submittedAt) batchSubmittedAt = data.submittedAt;
+    renderBatchUI(data.state, data.submittedAt, data.error || data.pollError);
+
+    if (data.status === 'complete') {
+      stopBatchPolling();
+      await openSession(id); // re-render the grid with the finished images
+      loadSessions();
+    } else if (data.status === 'error') {
+      stopBatchPolling();
+    }
+  }
+
+  function renderBatchUI(state, submittedAt, errorMsg) {
+    batchSection.classList.remove('hidden');
+    progressSection.classList.add('hidden');
+    const widths = {
+      SUBMITTING: 10, JOB_STATE_PENDING: 30, JOB_STATE_QUEUED: 30,
+      JOB_STATE_RUNNING: 65, JOB_STATE_SUCCEEDED: 100,
+      JOB_STATE_FAILED: 100, JOB_STATE_CANCELLED: 100, JOB_STATE_EXPIRED: 100,
+    };
+    const labels = {
+      SUBMITTING: 'Submitting batch to Google…',
+      JOB_STATE_PENDING: 'Queued — waiting for Google to start',
+      JOB_STATE_QUEUED: 'Queued — waiting for Google to start',
+      JOB_STATE_RUNNING: 'Running — Google is generating your images',
+      JOB_STATE_SUCCEEDED: 'Done! Loading your images…',
+      JOB_STATE_FAILED: 'Batch failed',
+      JOB_STATE_CANCELLED: 'Batch cancelled',
+      JOB_STATE_EXPIRED: 'Batch expired (took over 24h)',
+    };
+    batchBar.style.width = (widths[state] || 20) + '%';
+    batchStateEl.textContent = labels[state] || ('Status: ' + state);
+    if (errorMsg) {
+      batchEst.textContent = '';
+      batchHint.style.color = 'var(--error)';
+      batchHint.textContent = 'Problem: ' + errorMsg;
+    } else {
+      batchHint.style.color = '';
+      batchHint.textContent =
+        'You can close this page and come back later — generation keeps running on Google\u2019s side. ' +
+        'Reopen this session anytime to check progress.';
+      batchEst.textContent = 'Usually under 1 hour · guaranteed within 24h';
+    }
+    if (submittedAt) batchSubmittedAt = submittedAt;
+    updateBatchElapsed();
+  }
+
+  function updateBatchElapsed() {
+    if (!batchSubmittedAt) { batchElapsed.textContent = ''; return; }
+    const secs = Math.max(0, Math.floor((Date.now() - batchSubmittedAt) / 1000));
+    const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+    let t;
+    if (h > 0) t = h + 'h ' + m + 'm elapsed';
+    else if (m > 0) t = m + 'm ' + s + 's elapsed';
+    else t = s + 's elapsed';
+    batchElapsed.textContent = 'Submitted · ' + t;
+  }
+
+  batchRefresh.addEventListener('click', () => { if (currentId) pollBatchStatus(currentId); });
 
   // ---------- Rename ----------
   $('renameBtn').addEventListener('click', async () => {

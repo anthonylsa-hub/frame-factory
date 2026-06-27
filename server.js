@@ -248,6 +248,200 @@ async function runGeneration(id) {
   pushEvent(session, { type: 'complete', completed, skipped, errored, total: meta.entries.length });
 }
 
+// ===================== BATCH MODE (Gemini Batch API) =====================
+// Batch mode submits all prompts as one job for ~50% lower cost. It is
+// asynchronous: we upload a JSONL job file, create a batch job, then poll until
+// Google finishes and download the results. The API key is never stored on
+// disk — it is supplied per request (submit / status check) and held only in
+// memory for the duration of that request.
+
+const GL_BASE = 'https://generativelanguage.googleapis.com';
+
+async function uploadJsonlFile(apiKey, buffer, displayName) {
+  const numBytes = buffer.length;
+  const startRes = await fetch(`${GL_BASE}/upload/v1beta/files`, {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': apiKey,
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': String(numBytes),
+      'X-Goog-Upload-Header-Content-Type': 'application/jsonl',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ file: { display_name: displayName } }),
+  });
+  if (!startRes.ok) throw new Error(`Upload start failed (${startRes.status}): ${await startRes.text()}`);
+  const uploadUrl = startRes.headers.get('x-goog-upload-url');
+  if (!uploadUrl) throw new Error('Files API did not return an upload URL.');
+
+  const upRes = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': apiKey,
+      'X-Goog-Upload-Command': 'upload, finalize',
+      'X-Goog-Upload-Offset': '0',
+      'Content-Length': String(numBytes),
+    },
+    body: buffer,
+  });
+  if (!upRes.ok) throw new Error(`Upload failed (${upRes.status}): ${await upRes.text()}`);
+  const data = await upRes.json();
+  if (!data.file || !data.file.name) throw new Error('Files API upload returned no file name.');
+  return data.file.name; // e.g. "files/abc123"
+}
+
+async function createBatch(apiKey, fileName, displayName) {
+  const res = await fetch(`${GL_BASE}/v1beta/models/${MODEL}:batchGenerateContent`, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      batch: { display_name: displayName, input_config: { file_name: fileName } },
+    }),
+  });
+  if (!res.ok) throw new Error(`Batch create failed (${res.status}): ${await res.text()}`);
+  const data = await res.json();
+  const name = data.name || (data.metadata && data.metadata.name);
+  if (!name) throw new Error('Batch create returned no job name.');
+  return name; // e.g. "batches/123"
+}
+
+async function pollBatch(apiKey, batchName) {
+  const res = await fetch(`${GL_BASE}/v1beta/${batchName}`, {
+    headers: { 'x-goog-api-key': apiKey },
+  });
+  if (!res.ok) throw new Error(`Batch status check failed (${res.status}): ${await res.text()}`);
+  return res.json();
+}
+
+async function downloadResultFile(apiKey, fileName) {
+  const res = await fetch(`${GL_BASE}/download/v1beta/${fileName}:download?alt=media`, {
+    headers: { 'x-goog-api-key': apiKey },
+  });
+  if (!res.ok) throw new Error(`Results download failed (${res.status}): ${await res.text()}`);
+  return res.text();
+}
+
+// The batch resource shape varies; read defensively from known locations.
+function batchState(b) {
+  return (b.metadata && b.metadata.state) || b.state || (b.batchStats && b.batchStats.state) || 'UNKNOWN';
+}
+function batchOutputFile(b) {
+  return (
+    (b.dest && b.dest.fileName) ||
+    (b.response && b.response.responsesFile) ||
+    (b.metadata && b.metadata.output && b.metadata.output.responsesFile) ||
+    (b.output && b.output.responsesFile) ||
+    (b.response && b.response.fileName) ||
+    null
+  );
+}
+function batchInlineResponses(b) {
+  const r = b.response && b.response.inlinedResponses;
+  if (!r) return null;
+  return Array.isArray(r) ? r : r.inlinedResponses || null;
+}
+
+async function submitBatch(id, apiKey, refBuffers) {
+  const meta = await readMeta(id);
+  const refParts = refBuffers.map((refBuf) => ({
+    inlineData: { data: refBuf.toString('base64'), mimeType: 'image/png' },
+  }));
+  const lines = meta.entries.map((e) =>
+    JSON.stringify({
+      key: e.filename,
+      request: {
+        contents: [{ role: 'user', parts: buildParts(refParts, e.prompt, null, null) }],
+        generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+      },
+    }),
+  );
+  const jsonl = Buffer.from(lines.join('\n'), 'utf-8');
+
+  const fileName = await uploadJsonlFile(apiKey, jsonl, `framefactory-${id}.jsonl`);
+  const name = await createBatch(apiKey, fileName, meta.name);
+
+  const m = await readMeta(id);
+  m.batch = m.batch || {};
+  m.batch.name = name;
+  m.batch.state = 'JOB_STATE_PENDING';
+  m.status = 'batch_running';
+  await writeMeta(id, m);
+}
+
+async function ingestBatchResults(id, apiKey, meta, batchObj) {
+  let records = [];
+  const inline = batchInlineResponses(batchObj);
+  if (inline) {
+    for (let i = 0; i < inline.length; i += 1) {
+      const r = inline[i];
+      const key = (r.metadata && r.metadata.key) || (meta.entries[i] && meta.entries[i].filename);
+      records.push({ key, response: r.response, error: r.error });
+    }
+  } else {
+    const out = batchOutputFile(batchObj);
+    if (!out) throw new Error('Batch finished but no results file was found in the response.');
+    const text = await downloadResultFile(apiKey, out);
+    records = text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter(Boolean);
+  }
+
+  for (const rec of records) {
+    const entry = meta.entries.find((e) => e.filename === rec.key);
+    if (!entry) continue;
+    if (rec.error) {
+      entry.status = 'error';
+      entry.error = (typeof rec.error === 'string' ? rec.error : JSON.stringify(rec.error)).slice(0, 300);
+      continue;
+    }
+    const buf = extractImage(rec.response);
+    if (!buf) {
+      entry.status = 'skipped';
+      entry.error = extractText(rec.response) || 'No image returned (policy or text-only response).';
+      continue;
+    }
+    await fsp.writeFile(path.join(imagesDir(id), entry.filename), buf);
+    entry.status = 'done';
+    entry.error = null;
+  }
+}
+
+// Poll a batch once and, if finished, ingest its results. Idempotent.
+async function refreshBatch(id, apiKey) {
+  const meta = await readMeta(id);
+  if (meta.mode !== 'batch') return meta;
+  if (!meta.batch || !meta.batch.name) return meta; // still submitting
+  if (meta.status === 'complete' || meta.status === 'error') return meta;
+
+  const b = await pollBatch(apiKey, meta.batch.name);
+  const state = batchState(b);
+  meta.batch.state = state;
+
+  if (state === 'JOB_STATE_SUCCEEDED' && !meta.batch.ingested) {
+    await ingestBatchResults(id, apiKey, meta, b);
+    meta.batch.ingested = true;
+    meta.status = 'complete';
+  } else if (['JOB_STATE_FAILED', 'JOB_STATE_CANCELLED', 'JOB_STATE_EXPIRED'].includes(state)) {
+    meta.status = 'error';
+    meta.batch.error = JSON.stringify(b.error || b.metadata || {}).slice(0, 300);
+  }
+  await writeMeta(id, meta);
+  return meta;
+}
+
+function counts(meta) {
+  return {
+    done: meta.entries.filter((e) => e.status === 'done').length,
+    skipped: meta.entries.filter((e) => e.status === 'skipped').length,
+    errored: meta.entries.filter((e) => e.status === 'error').length,
+    total: meta.entries.length,
+  };
+}
+
 // ---- list sessions ----
 app.get('/api/sessions', async (req, res) => {
   const ids = await fsp.readdir(DATA_DIR).catch(() => []);
@@ -282,7 +476,17 @@ app.get('/api/sessions/:id', async (req, res) => {
       error: e.error || null,
       url: e.status === 'done' ? imageUrl(id, e.filename) : null,
     }));
-    res.json({ id: meta.id, name: meta.name, createdAt: meta.createdAt, status: meta.status, entries });
+    res.json({
+      id: meta.id,
+      name: meta.name,
+      createdAt: meta.createdAt,
+      status: meta.status,
+      mode: meta.mode || 'live',
+      batch: meta.batch
+        ? { state: meta.batch.state, submittedAt: meta.batch.submittedAt, error: meta.batch.error || null }
+        : null,
+      entries,
+    });
   } catch {
     res.status(404).json({ error: 'Session not found.' });
   }
@@ -335,6 +539,7 @@ const createUpload = upload.fields([
 app.post('/api/sessions', createUpload, async (req, res) => {
   const apiKey = (req.body.apiKey || '').trim();
   const name = (req.body.name || '').trim();
+  const mode = req.body.mode === 'batch' ? 'batch' : 'live';
   const referenceImages = (req.files && req.files.referenceImages) || [];
   const promptFiles = (req.files && req.files.promptFile) || [];
 
@@ -373,12 +578,31 @@ app.post('/api/sessions', createUpload, async (req, res) => {
     name: (name || `Session ${new Date().toLocaleString()}`).slice(0, 120),
     createdAt: Date.now(),
     refs: refNames,
-    status: 'running',
+    mode,
+    status: mode === 'batch' ? 'batch_submitting' : 'running',
+    batch: mode === 'batch'
+      ? { name: null, state: 'SUBMITTING', submittedAt: Date.now(), ingested: false, error: null }
+      : null,
     entries: entries.map((e) => ({
       timecode: e.timecode, filename: e.filename, prompt: e.prompt, status: 'pending', error: null,
     })),
   };
   await writeMeta(id, meta);
+
+  if (mode === 'batch') {
+    res.json({ sessionId: id, mode, total: entries.length, parsed: entries.length, failed });
+    submitBatch(id, apiKey, referenceImages.map((r) => r.buffer)).catch(async (err) => {
+      try {
+        const m = await readMeta(id);
+        m.status = 'error';
+        m.batch = m.batch || {};
+        m.batch.state = 'JOB_STATE_FAILED';
+        m.batch.error = (err && err.message) || 'Batch submit failed.';
+        await writeMeta(id, m);
+      } catch { /* ignore */ }
+    });
+    return;
+  }
 
   const session = {
     id, apiKey,
@@ -387,10 +611,37 @@ app.post('/api/sessions', createUpload, async (req, res) => {
   };
   live.set(id, session);
 
-  res.json({ sessionId: id, total: entries.length, parsed: entries.length, failed });
+  res.json({ sessionId: id, mode, total: entries.length, parsed: entries.length, failed });
 
   runGeneration(id).catch((err) => {
     pushEvent(session, { type: 'fatal', message: err.message });
+  });
+});
+
+// ---- check/advance a batch job's status ----
+app.post('/api/sessions/:id/batch-status', async (req, res) => {
+  const { id } = req.params;
+  if (!validId(id)) return res.status(400).json({ error: 'Bad id.' });
+  const apiKey = (req.body.apiKey || '').trim();
+
+  let meta;
+  try { meta = await readMeta(id); } catch { return res.status(404).json({ error: 'Session not found.' }); }
+  if (meta.mode !== 'batch') return res.json({ mode: 'live', status: meta.status, counts: counts(meta) });
+
+  let pollError = null;
+  if (apiKey && meta.batch && meta.batch.name && meta.status !== 'complete' && meta.status !== 'error') {
+    try { meta = await refreshBatch(id, apiKey); }
+    catch (err) { pollError = (err && err.message) || 'Status check failed.'; }
+  }
+
+  res.json({
+    mode: 'batch',
+    status: meta.status,
+    state: (meta.batch && meta.batch.state) || 'SUBMITTING',
+    submittedAt: (meta.batch && meta.batch.submittedAt) || null,
+    error: (meta.batch && meta.batch.error) || null,
+    pollError,
+    counts: counts(meta),
   });
 });
 
