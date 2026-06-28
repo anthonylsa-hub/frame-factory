@@ -659,23 +659,26 @@
   function renderBatchUI(state, submittedAt, errorMsg) {
     batchSection.classList.remove('hidden');
     progressSection.classList.add('hidden');
+    // Google reports states as either JOB_STATE_* or BATCH_STATE_*; key off the
+    // suffix so both naming styles map to the same bar width and label.
+    const key = String(state || '').replace(/^(JOB_STATE_|BATCH_STATE_)/, '');
     const widths = {
-      SUBMITTING: 10, JOB_STATE_PENDING: 30, JOB_STATE_QUEUED: 30,
-      JOB_STATE_RUNNING: 65, JOB_STATE_SUCCEEDED: 100,
-      JOB_STATE_FAILED: 100, JOB_STATE_CANCELLED: 100, JOB_STATE_EXPIRED: 100,
+      SUBMITTING: 10, PENDING: 30, QUEUED: 30,
+      RUNNING: 65, SUCCEEDED: 100,
+      FAILED: 100, CANCELLED: 100, EXPIRED: 100,
     };
     const labels = {
       SUBMITTING: 'Submitting batch to Google…',
-      JOB_STATE_PENDING: 'Queued — waiting for Google to start',
-      JOB_STATE_QUEUED: 'Queued — waiting for Google to start',
-      JOB_STATE_RUNNING: 'Running — Google is generating your images',
-      JOB_STATE_SUCCEEDED: 'Done! Loading your images…',
-      JOB_STATE_FAILED: 'Batch failed',
-      JOB_STATE_CANCELLED: 'Batch cancelled',
-      JOB_STATE_EXPIRED: 'Batch expired (took over 24h)',
+      PENDING: 'Queued — waiting for Google to start',
+      QUEUED: 'Queued — waiting for Google to start',
+      RUNNING: 'Running — Google is generating your images',
+      SUCCEEDED: 'Done! Loading your images…',
+      FAILED: 'Batch failed',
+      CANCELLED: 'Batch cancelled',
+      EXPIRED: 'Batch expired (took over 24h)',
     };
-    batchBar.style.width = (widths[state] || 20) + '%';
-    batchStateEl.textContent = labels[state] || ('Status: ' + state);
+    batchBar.style.width = (widths[key] || 20) + '%';
+    batchStateEl.textContent = labels[key] || ('Status: ' + state);
     if (errorMsg) {
       batchEst.textContent = '';
       batchHint.style.color = 'var(--error)';

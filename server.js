@@ -421,11 +421,14 @@ async function refreshBatch(id, apiKey) {
   const state = batchState(b);
   meta.batch.state = state;
 
-  if (state === 'JOB_STATE_SUCCEEDED' && !meta.batch.ingested) {
+  // Google's batch API reports the final state with either a JOB_STATE_ or a
+  // BATCH_STATE_ prefix depending on the endpoint version, so match on the
+  // suffix rather than the full string.
+  if (/SUCCEEDED$/.test(state) && !meta.batch.ingested) {
     await ingestBatchResults(id, apiKey, meta, b);
     meta.batch.ingested = true;
     meta.status = 'complete';
-  } else if (['JOB_STATE_FAILED', 'JOB_STATE_CANCELLED', 'JOB_STATE_EXPIRED'].includes(state)) {
+  } else if (/(FAILED|CANCELLED|EXPIRED)$/.test(state)) {
     meta.status = 'error';
     meta.batch.error = JSON.stringify(b.error || b.metadata || {}).slice(0, 300);
   }
@@ -755,7 +758,16 @@ app.get('/download/:id', async (req, res) => {
   archive.finalize();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Never cache the HTML page, so a redeploy is always picked up immediately
+// (otherwise browsers/Railway can keep serving an old index.html that is
+// missing newer features like opening past sessions).
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    }
+  },
+}));
 
 app.listen(PORT, () => {
   console.log(`Frame Factory running on http://localhost:${PORT}`);
